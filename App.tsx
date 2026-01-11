@@ -1,10 +1,13 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Pillar, ViewMode, QuarterlyData } from './types';
 import TemplateWizard from './components/TemplateWizard';
 import IndicatorCard from './components/IndicatorCard';
 import AnalyticsView from './components/AnalyticsView';
 import { LayoutDashboard, FilePlus, ChevronDown, ChevronRight, BarChart3, Target, ClipboardCheck, ArrowLeft, CheckCircle, Download, PieChart, Settings, LogOut, User, Bell, Shield, Database, Menu, X } from 'lucide-react';
+
+const STORAGE_KEY = 'imihigo-saved-templates';
+const STORAGE_SELECTED_KEY = 'imihigo-selected-template-index';
 
 const INITIAL_DATA: Pillar[] = [
   {
@@ -47,14 +50,65 @@ const INITIAL_DATA: Pillar[] = [
 ];
 
 const App: React.FC = () => {
+  // Load templates from localStorage on mount
+  const loadTemplatesFromStorage = (): Pillar[][] => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed.length > 0 ? parsed : [INITIAL_DATA];
+      }
+    } catch (error) {
+      console.error('Error loading templates from localStorage:', error);
+    }
+    return [INITIAL_DATA];
+  };
+
+  const loadSelectedIndexFromStorage = (): number | null => {
+    try {
+      const stored = localStorage.getItem(STORAGE_SELECTED_KEY);
+      if (stored !== null) {
+        const parsed = parseInt(stored, 10);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+    } catch (error) {
+      console.error('Error loading selected index from localStorage:', error);
+    }
+    return 0;
+  };
+
   const [view, setView] = useState<ViewMode>('dashboard');
-  const [savedTemplates, setSavedTemplates] = useState<Pillar[][]>([INITIAL_DATA]);
-  const [selectedTemplateIndex, setSelectedTemplateIndex] = useState<number | null>(0);
+  const [savedTemplates, setSavedTemplates] = useState<Pillar[][]>(loadTemplatesFromStorage);
+  const [selectedTemplateIndex, setSelectedTemplateIndex] = useState<number | null>(loadSelectedIndexFromStorage);
   const [expandedSectors, setExpandedSectors] = useState<string[]>(['s-1']);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
+  // Save templates to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedTemplates));
+    } catch (error) {
+      console.error('Error saving templates to localStorage:', error);
+    }
+  }, [savedTemplates]);
+
+  // Save selected template index to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (selectedTemplateIndex !== null) {
+        localStorage.setItem(STORAGE_SELECTED_KEY, selectedTemplateIndex.toString());
+      } else {
+        localStorage.removeItem(STORAGE_SELECTED_KEY);
+      }
+    } catch (error) {
+      console.error('Error saving selected index to localStorage:', error);
+    }
+  }, [selectedTemplateIndex]);
+
   // Active pillars derived from selection
-  const pillars = selectedTemplateIndex !== null ? savedTemplates[selectedTemplateIndex] : [];
+  const pillars = selectedTemplateIndex !== null && savedTemplates[selectedTemplateIndex] 
+    ? savedTemplates[selectedTemplateIndex] 
+    : [];
 
   const toggleSector = (id: string) => {
     setExpandedSectors(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
@@ -89,12 +143,16 @@ const App: React.FC = () => {
       }))
     }));
     setSavedTemplates(updatedTemplates);
+    // localStorage is saved automatically via useEffect
   };
 
   const handleTemplateComplete = (newPillars: Pillar[]) => {
-    setSavedTemplates(prev => [...prev, newPillars]);
-    setSelectedTemplateIndex(savedTemplates.length);
+    const newTemplates = [...savedTemplates, newPillars];
+    setSavedTemplates(newTemplates);
+    const newIndex = newTemplates.length - 1;
+    setSelectedTemplateIndex(newIndex);
     setView('fill');
+    // localStorage is saved automatically via useEffect
   };
 
   const stats = useMemo(() => {
@@ -117,9 +175,9 @@ const App: React.FC = () => {
     if (pillars.length === 0) return;
 
     const headers = [
-      'Pillar', 'Sector', 'Outcome', 'Output', 'Indicator', 
+      'Pillar', 'Sector', 'Outcome', 'Output', 'Indicator',
       'Baseline', 'Source of Data', 'Annual Target',
-      'Q1 Target', 'Q1 Achievement', 'Q2 Target', 'Q2 Achievement', 
+      'Q1 Target', 'Q1 Achievement', 'Q2 Target', 'Q2 Achievement',
       'Q3 Target', 'Q3 Achievement', 'Q4 Target', 'Q4 Achievement',
       'Total Achievement', 'Progress %'
     ];
@@ -136,7 +194,7 @@ const App: React.FC = () => {
               const q4 = ind.quarters[4];
               const totalAch = q1.achievement + q2.achievement + q3.achievement + q4.achievement;
               const progress = ind.annualTarget > 0 ? (totalAch / ind.annualTarget) * 100 : 0;
-              
+
               const row = [
                 p.name, s.name, oc.name, op.name, ind.name,
                 ind.baseline, ind.sourceOfData, ind.annualTarget,
@@ -144,7 +202,7 @@ const App: React.FC = () => {
                 q3.target, q3.achievement, q4.target, q4.achievement,
                 totalAch, progress.toFixed(2)
               ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
-              
+
               rows.push(row);
             });
           });
@@ -171,117 +229,189 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
-      {/* Mobile Menu Button - visible only on mobile */}
-      <button
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        className="md:hidden fixed top-4 left-4 z-40 p-2 bg-slate-900 text-white rounded-lg shadow-lg"
-      >
-        {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+      {/* Top Navigation Bar */}
+      <nav className="bg-slate-900 text-slate-400 border-b border-slate-800 z-30">
+        <div className="px-3 sm:px-4 md:px-6">
+          <div className="flex items-center justify-between h-14 md:h-16">
+            {/* Logo */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
+                <Target size={16} />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-sm md:text-base font-bold text-white tracking-tight leading-none">Imihigo</h1>
+                <span className="text-[7px] md:text-[8px] font-bold text-slate-500 uppercase tracking-widest">Management System</span>
+              </div>
+            </div>
 
-      {/* Sidebar - hidden on mobile by default, shown when mobileMenuOpen */}
-      <aside className={`fixed inset-0 z-30 bg-slate-900 text-slate-400 p-6 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out md:relative md:w-72 md:inset-auto ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-600/20">
-            <Target size={24} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight leading-none">Imihigo</h1>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Management System</span>
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-1 flex-1 justify-center">
+              <button
+                onClick={() => setView('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${view === 'dashboard' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <LayoutDashboard size={16} />
+                <span className="text-xs font-medium">Dashboard</span>
+              </button>
+              <button
+                onClick={() => setView('analytics')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${view === 'analytics' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <PieChart size={16} />
+                <span className="text-xs font-medium">Analytics</span>
+              </button>
+              <button
+                onClick={() => setView('template')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${view === 'template' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <FilePlus size={16} />
+                <span className="text-xs font-medium">Build Template</span>
+              </button>
+              <button
+                onClick={() => {
+                  setView('fill');
+                  setSelectedTemplateIndex(null);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${view === 'fill' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <ClipboardCheck size={16} />
+                <span className="text-xs font-medium">Fill Performance</span>
+              </button>
+            </div>
+
+            {/* Right side - User menu & Mobile menu button */}
+            <div className="flex items-center gap-3">
+              {/* Desktop User Menu */}
+              <div className="hidden md:flex items-center gap-2 border-l border-slate-700 pl-3 ml-2">
+                <button
+                  onClick={() => setView('settings')}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${view === 'settings' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+                >
+                  <Settings size={16} />
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all hover:bg-rose-500/10 hover:text-rose-400"
+                  title="Logout"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+              </button>
+            </div>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-2">
-          <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest px-4 mb-2">Main Menu</div>
-          <button
-            onClick={() => setView('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
-          >
-            <LayoutDashboard size={18} />
-            <span className="text-sm font-semibold">Dashboard</span>
-          </button>
-          <button
-            onClick={() => setView('analytics')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'analytics' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
-          >
-            <PieChart size={18} />
-            <span className="text-sm font-semibold">Analytics</span>
-          </button>
-          <button
-            onClick={() => setView('template')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'template' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
-          >
-            <FilePlus size={18} />
-            <span className="text-sm font-semibold">Build Template</span>
-          </button>
-          <button
-            onClick={() => {
-              setView('fill');
-              setSelectedTemplateIndex(null);
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'fill' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
-          >
-            <ClipboardCheck size={18} />
-            <span className="text-sm font-semibold">Fill Performance</span>
-          </button>
-
-          <div className="pt-6">
-            <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest px-4 mb-2">User Section</div>
-            <button
-              onClick={() => setView('settings')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
-            >
-              <Settings size={18} />
-              <span className="text-sm font-semibold">Settings</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-rose-500/10 hover:text-rose-400 mt-1"
-            >
-              <LogOut size={18} />
-              <span className="text-sm font-semibold">Logout</span>
-            </button>
+        {/* Mobile Dropdown Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-800 bg-slate-900">
+            <div className="px-3 py-2 space-y-1">
+              <button
+                onClick={() => {
+                  setView('dashboard');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${view === 'dashboard' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <LayoutDashboard size={16} />
+                <span className="text-xs font-medium">Dashboard</span>
+              </button>
+              <button
+                onClick={() => {
+                  setView('analytics');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${view === 'analytics' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <PieChart size={16} />
+                <span className="text-xs font-medium">Analytics</span>
+              </button>
+              <button
+                onClick={() => {
+                  setView('template');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${view === 'template' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <FilePlus size={16} />
+                <span className="text-xs font-medium">Build Template</span>
+              </button>
+              <button
+                onClick={() => {
+                  setView('fill');
+                  setSelectedTemplateIndex(null);
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${view === 'fill' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+              >
+                <ClipboardCheck size={16} />
+                <span className="text-xs font-medium">Fill Performance</span>
+              </button>
+              <div className="pt-2 border-t border-slate-800 mt-2">
+                <button
+                  onClick={() => {
+                    setView('settings');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${view === 'settings' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'hover:bg-slate-800'}`}
+                >
+                  <Settings size={16} />
+                  <span className="text-xs font-medium">Settings</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all hover:bg-rose-500/10 hover:text-rose-400 mt-1"
+                >
+                  <LogOut size={16} />
+                  <span className="text-xs font-medium">Logout</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </nav>
-
-        <div className="mt-auto p-4 flex flex-col items-center">
-            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">v1.2.0 Stable</span>
-        </div>
-      </aside>
+        )}
+      </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative md:ml-72">
-        <header className="h-20 border-b border-slate-200 bg-white/80 backdrop-blur-md px-4 md:px-10 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-4 md:gap-6">
+      <main className="flex-1 overflow-y-auto relative">
+        <header className="h-14 sm:h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md px-4 sm:px-6 md:px-10 flex items-center justify-between sticky top-0 z-20">
+          <div className="flex items-center gap-3 md:gap-4">
             {view === 'fill' && selectedTemplateIndex !== null && (
               <button
                 onClick={() => setSelectedTemplateIndex(null)}
-                className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors flex items-center gap-2"
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors flex items-center gap-2 touch-target"
               >
-                <ArrowLeft size={20} />
-                <span className="text-xs font-bold uppercase tracking-wider">Back</span>
+                <ArrowLeft size={18} />
+                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
               </button>
             )}
-            <h2 className="text-lg md:text-2xl font-bold text-slate-800 tracking-tight capitalize">
+            <h2 className="text-base sm:text-lg md:text-2xl font-bold text-slate-800 tracking-tight capitalize">
               {view === 'fill' ? 'Data Entry' : view.replace('-', ' ')}
             </h2>
           </div>
-          <div className="flex items-center gap-4 md:gap-6">
+          <div className="flex items-center gap-3 md:gap-4">
             {view === 'dashboard' && pillars.length > 0 && (
               <button
                 onClick={downloadCSV}
-                className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 bg-indigo-50 text-indigo-700 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-all border border-indigo-100 shadow-sm"
+                className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold text-xs md:text-sm hover:bg-indigo-100 transition-all border border-indigo-100 shadow-sm touch-target"
               >
-                <Download size={18} />
+                <Download size={16} className="md:w-5 md:h-5" />
                 <span className="hidden md:inline">Download Report</span>
               </button>
             )}
-            <div className="hidden md:flex flex-col items-end border-l border-slate-200 pl-6 ml-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Current Period</span>
-              <span className="text-sm text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">Fiscal Year 2024 - Quarter 1</span>
+            <div className="hidden lg:flex flex-col items-end border-l border-slate-200 pl-4 ml-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">Current Period</span>
+              <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">Fiscal Year 2024 - Quarter 1</span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-200 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center font-bold text-slate-500">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-slate-200 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center font-bold text-xs md:text-sm text-slate-500 touch-target">
               JD
             </div>
           </div>
@@ -293,20 +423,25 @@ const App: React.FC = () => {
           )}
 
           {view === 'analytics' && (
-            <AnalyticsView pillars={pillars} />
+            <AnalyticsView 
+              pillars={pillars} 
+              savedTemplates={savedTemplates}
+              onTemplateSelect={setSelectedTemplateIndex}
+              selectedTemplateIndex={selectedTemplateIndex}
+            />
           )}
 
           {view === 'settings' && (
             <div className="max-w-full mx-auto space-y-8 animate-in fade-in duration-500 px-0 md:px-0">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-8 border-b border-slate-100">
+                <div className="p-6 md:p-8 border-b border-slate-100">
                   <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">
                     <User className="text-indigo-600" size={24} />
                     Account Settings
                   </h3>
                   <p className="text-slate-500 text-sm mt-1">Manage your administrative profile and credentials.</p>
                 </div>
-                <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Full Name</label>
@@ -330,7 +465,7 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-start gap-4 hover:border-indigo-200 transition-all cursor-pointer">
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
                     <Bell size={20} />
@@ -489,17 +624,17 @@ const App: React.FC = () => {
                 ))}
 
                 <div className="bg-white p-6 md:p-10 rounded-3xl border-2 border-emerald-100 flex flex-col items-center text-center shadow-xl shadow-emerald-900/5">
-                   <div className="w-12 h-12 md:w-16 md:h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-4 md:mb-6">
-                      <CheckCircle size={24} className="md:size-8" />
-                   </div>
-                   <h4 className="text-xl md:text-2xl font-black text-slate-900 mb-2">Ready to finalize?</h4>
-                   <p className="text-slate-500 max-w-md mb-6 md:mb-8 text-sm md:text-base">All entries are auto-saved. You can return to the dashboard to see the updated roll-up calculations.</p>
-                   <button
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-4 md:mb-6">
+                    <CheckCircle size={24} className="md:size-8" />
+                  </div>
+                  <h4 className="text-xl md:text-2xl font-black text-slate-900 mb-2">Ready to finalize?</h4>
+                  <p className="text-slate-500 max-w-md mb-6 md:mb-8 text-sm md:text-base">All entries are auto-saved. You can return to the dashboard to see the updated roll-up calculations.</p>
+                  <button
                     onClick={() => setView('dashboard')}
                     className="px-6 py-3 md:px-10 md:py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all transform hover:-translate-y-1"
-                   >
-                     Return to Dashboard
-                   </button>
+                  >
+                    Return to Dashboard
+                  </button>
                 </div>
               </div>
             )
@@ -545,8 +680,8 @@ const App: React.FC = () => {
                   {outcome.outputs.map(output => (
                     <div key={output.id} className="space-y-4">
                       <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-slate-100 w-fit">
-                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Output</span>
-                         <h5 className="font-bold text-slate-700 text-sm italic">{output.name}</h5>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Output</span>
+                        <h5 className="font-bold text-slate-700 text-sm italic">{output.name}</h5>
                       </div>
                       <div className="grid grid-cols-1 gap-6">
                         {output.indicators.map(ind => (

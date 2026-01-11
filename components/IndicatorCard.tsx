@@ -33,7 +33,7 @@ const IndicatorCard: React.FC<IndicatorCardProps> = ({ indicator, onUpdate, isFi
           <h4 className="font-bold text-slate-800 leading-tight text-lg">{indicator.name}</h4>
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
             <p className="text-xs text-slate-500">Source: <span className="font-medium text-slate-700">{indicator.sourceOfData}</span></p>
-            <p className="text-xs text-slate-500">Baseline: <span className="font-medium text-slate-700">{indicator.baseline}</span></p>
+            <p className="text-xs text-slate-500">Baseline: <span claessName="font-medium text-slate-700">{indicator.baseline}</span></p>
             <p className="text-xs text-indigo-500 font-bold uppercase tracking-tighter">Annual Target: {indicator.annualTarget}</p>
           </div>
         </div>
@@ -42,15 +42,15 @@ const IndicatorCard: React.FC<IndicatorCardProps> = ({ indicator, onUpdate, isFi
         </div>
       </div>
 
-      <div className={`grid ${isFillMode ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 sm:grid-cols-4'} gap-2 md:gap-3 mb-6`}>
+      <div className={`grid ${isFillMode ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 xs:grid-cols-2 sm:grid-cols-4'} gap-2 md:gap-3 mb-6`}>
         {[1, 2, 3, 4].map(q => {
           const isEditable = isFillMode || q === activeQuarter;
           const qProgress = calculateQuarterProgress(q);
           const qStatus = getStatusColor(qProgress);
-          
+
           return (
-            <div 
-              key={q} 
+            <div
+              key={q}
               className={`p-4 rounded-xl border transition-all ${isEditable ? 'bg-indigo-50 border-indigo-200 scale-[1.01]' : 'bg-slate-50 border-slate-100 opacity-60'}`}
             >
               <div className="flex justify-between items-center mb-2">
@@ -58,16 +58,25 @@ const IndicatorCard: React.FC<IndicatorCardProps> = ({ indicator, onUpdate, isFi
                 {qProgress > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${qStatus}`}>{qProgress.toFixed(0)}%</span>}
               </div>
               <div className="text-xs font-medium text-slate-500 mb-2">Target: <span className="text-slate-900 font-bold">{indicator.quarters[q as 1 | 2 | 3 | 4].target}</span></div>
-              
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase">Achievement</label>
-                <input 
-                  type="number"
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   disabled={!isEditable}
                   placeholder="0"
-                  className={`w-full text-sm p-2 rounded-lg border font-semibold outline-none bg-white transition-all ${isEditable ? 'border-indigo-300 focus:ring-2 focus:ring-indigo-400 shadow-sm' : 'border-slate-200 cursor-not-allowed'}`}
+                  className={`w-full text-sm p-3 rounded-lg border font-semibold outline-none bg-white transition-all ${isEditable ? 'border-indigo-300 focus:ring-2 focus:ring-indigo-400 shadow-sm' : 'border-slate-200 cursor-not-allowed'}`}
                   value={indicator.quarters[q as 1 | 2 | 3 | 4].achievement || ''}
-                  onChange={(e) => onUpdate(indicator.id, q, Number(e.target.value))}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow empty string or valid numbers
+                    if (value === '' || /^[0-9]+$/.test(value)) {
+                      onUpdate(indicator.id, q, value === '' ? 0 : Number(value));
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
             </div>
@@ -82,7 +91,7 @@ const IndicatorCard: React.FC<IndicatorCardProps> = ({ indicator, onUpdate, isFi
             <span className="font-black text-slate-800">{annualPercentage.toFixed(1)}%</span>
           </div>
           <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-            <div 
+            <div
               className={`h-full transition-all duration-700 ease-out shadow-inner ${annualPercentage >= 90 ? 'bg-emerald-500' : annualPercentage >= 70 ? 'bg-amber-500' : 'bg-rose-500'}`}
               style={{ width: `${Math.min(annualPercentage, 100)}%` }}
             />
